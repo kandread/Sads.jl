@@ -1,5 +1,7 @@
 module Sads
 
-greet() = print("Hello World!")
+abstract type CrossSection end
+
+include("crosssections.jl")
 
 end # module
