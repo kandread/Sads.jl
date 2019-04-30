@@ -1,5 +1,7 @@
 module Sads
 
+using Distributions
+
 abstract type CrossSection end
 
 include("crosssections.jl")
@@ -53,13 +55,14 @@ function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
     Qe, ze[1, :] = lhs_ensemble(nsamples, Qₚ, zₚ)
     re = rand(rₚ, nsamples)
     ne = rand(nₚ, nsamples)
-    he = gvf_ensemble(mean(H, dims=2), mean(W, dims=2), mean(S, dims=2), x, maximum(H, dims=2),
+    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), mean(S, dims=2), x, maximum(H, dims=2),
                       maximum(W, dims=2), Qe, [mean(ne) for i in 1:nsamples], [mean(re) for i in 1:nsamples], ze)
     i = findall(he[1, :] .> 0)
     h = he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i]
     j = i[(h .> minimum(H[end, :])) .& (h .< maximum(H[end, :]))]
     zbnds = [minimum(ze[1, j]), maximum(ze[1, j])]
     qbnds = [minimum(Qe[j]), maximum(Qe[j])]
+    zbnds, qbnds
 end
 
 end
