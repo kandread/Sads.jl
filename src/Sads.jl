@@ -60,8 +60,29 @@ end
 Estimate the prior probability distribution of bed elevation.
 
 """
-function bed_elevation_prior()
-
+function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, dpars)
+    S = diff(H, dims=1) ./ diff(x)
+    S = [S[1, :]'; S]
+    obs = [h for h in H[end, :]]
+    Fobs = kde(obs)
+    h = zeros(nsamples)
+    zd, dd = lhs_ensemble(nsamples, Uniform(zbnds...), Normal(dpars...))
+    for s in 1:nsamples
+        zₚ = Normal(zd[s], 0.1)
+        Qₚ = LogNormal(log(qwbm/sqrt(1+dd[s]^2)), log(1+dd[s]^2))
+        Qe, ne, re, ze = prior_ensemble(x, Qₚ, nₚ, rₚ, zₚ, nens)
+        he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), mean(S, dims=2), x, maximum(H, dims=2),
+                           maximum(W, dims=2), Qe, [mean(ne) for i in 1:nens], [mean(re) for i in 1:nens], ze)
+        i = findall(he[1, :] .> 0)
+        h[s] = mean(he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i])
+    end
+    zd = zd[.!isnan.(h)]
+    dd = dd[.!isnan.(h)]
+    h = h[.!isnan.(h)]
+    Fmod = kde(h)
+    L = 1
+    accepted = [rand(Uniform(0, L)) * pdf(Fmod, s) <= pdf(Fobs, s) for s in h]
+    mean(zd[accepted]), std(zd[accepted])
 end
 
 """
