@@ -1,5 +1,6 @@
 module Sads
 
+using Logging
 using Distributions
 using KernelDensity: kde
 
@@ -63,6 +64,7 @@ Estimate the prior probability distribution of discharge.
 
 """
 function discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zₚ)
+    @info "Estimating discharge prior PDF"
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
     obs = [std(sample(H[end, :], nens)) for _ in 1:nsamples]
@@ -93,6 +95,7 @@ Estimate the prior probability distribution of bed elevation.
 
 """
 function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, dpars)
+    @info "Estimating bed elevation prior PDF"
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
     obs = [h for h in H[end, :]]
@@ -122,6 +125,7 @@ Estimate the bounds of the prior distributions.
 
 """
 function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
+    @info "Estimating prior distribution bounds"
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
     # We will use arbitrary values that are large enough to represent the uninformative priors
