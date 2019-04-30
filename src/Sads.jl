@@ -14,8 +14,37 @@ include("ensemble.jl")
 Estimate discharge by assimilating observed water surface elevations along a river channel.
 
 """
-function estimate()
+function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=1000, nens=100)
+    zm, zs, dm, ds = priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
+    ri[end] = length(x) + 1  # increment upstream index since we subtract 1 when localizing for each reach
+    Qa = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2), minimum(H[1, :]),
+                    LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), nₚ, rₚ, Normal(zm, zs), dm, nens, ri)
+    Qa
+end
 
+"""
+Assimilate SWOT observations for river reach.
+
+"""
+function assimilate(H, W, x, wbf, hbf, hmin, Qₚ, nₚ, rₚ, zₚ, δ, nens, ri; ϵₒ=0.01)
+    @info "Assimilating observations and estimating discharge"
+    Qa = zeros(length(ri)-1, size(H, 2))
+    S = diff(H, dims=1) ./ diff(x)
+    S = [S[1, :]'; S]
+    ze = zeros(length(x), nens)
+    Qe, ne, re, ze[1, :] = lhs_ensemble(nens, Qₚ, nₚ, rₚ, zₚ)
+    for t in 1:size(H,2)
+        he = gvf_ensemble!(H[:, t], W[:, t], S[:, t], x, hbf, wbf, Qe, ne, re, ze)
+        i = findall(he[1, :] .> 0)
+        h = ze .+ he .* ((re .+ 1) ./ re)'
+        X = repeat(Qe[i]', outer=length(ri)-1)
+        XA = h[:, i]
+        d = H[:, t]
+        E = rand(Normal(ϵₒ, 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
+        A = letkf(X, d, XA, E, [[j] for j in 1:length(ri)-1], [collect(ri[j]:ri[j+1]-1) for j in 1:length(ri)-1], diagR=true)
+        Qa[:, t] = mean(abs.(A), dims=2)  # could also use the absolute of the mean
+    end
+    Qa
 end
 
 """
