@@ -24,6 +24,9 @@ Estimate the prior probability distributions of bed elevation and discharge usin
 """
 function priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
     zbnds, qbnds = prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
+    dm, ds = discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, Normal(minimum(H[1, :]), 0.1))
+    zm, zs = bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, [dm, ds])
+    zm, zs, dm, ds
 end
 
 """
