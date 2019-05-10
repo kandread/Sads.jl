@@ -17,9 +17,8 @@ Estimate discharge by assimilating observed water surface elevations along a riv
 """
 function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=1000, nens=100)
     zm, zs, dm, ds = priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
-    ri[end] = length(x) + 1  # increment upstream index since we subtract 1 when localizing for each reach
-    Qa = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2), minimum(H[1, :]),
-                    LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), nₚ, rₚ, Normal(zm, zs), dm, nens, ri)
+    Qa = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2),
+                    LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), nₚ, rₚ, Normal(zm, zs), nens, ri)
     Qa
 end
 
@@ -27,8 +26,7 @@ end
 Assimilate SWOT observations for river reach.
 
 """
-function assimilate(H, W, x, wbf, hbf, hmin, Qₚ, nₚ, rₚ, zₚ, δ, nens, ri; ϵₒ=0.01)
-    @info "Assimilating observations and estimating discharge"
+function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0.01, cv_thresh=1.5)
     Qa = zeros(length(ri)-1, size(H, 2))
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
