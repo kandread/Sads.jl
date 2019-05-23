@@ -61,9 +61,9 @@ Estimate the prior probability distribution of discharge.
 
 """
 function discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zₚ)
-    @info "Estimating discharge prior PDF"
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
+    S0 = S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     obs = [std(sample(H[end, :], nens)) for _ in 1:nsamples]
     Fobs = kde(obs)
     h = zeros(nsamples)
@@ -74,8 +74,7 @@ function discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zₚ)
         σ = log(1 + δ[s]^2)
         Qₚ = LogNormal(μ, σ)
         Qe, ne, re, ze = prior_ensemble(x, Qₚ, nₚ, rₚ, zₚ, nens)
-        he = gvf_ensemble!(H[:, t[s]], W[:, t[s]], S[:, t[s]], x, maximum(H, dims=2), maximum(W, dims=2),
-                          Qe, [mean(ne) for i in 1:nens], [mean(re) for i in 1:nens], ze)
+        he = gvf_ensemble!(H[:, t[s]], W[:, t[s]], S0, x, maximum(H, dims=2), maximum(W, dims=2), Qe, [mean(ne) for i in 1:nens], [mean(re) for i in 1:nens], ze)
         i = findall(he[1, :] .> 0)
         h[s] = std(he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i])
     end
@@ -97,21 +96,20 @@ Estimate the prior probability distribution of bed elevation.
 
 """
 function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, dpars)
-    @info "Estimating bed elevation prior PDF"
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
+    S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)];
     obs = [h for h in H[end, :]]
-    Fobs = kde(obs)
+    Fobs=kde(obs)
     h = zeros(nsamples)
     zd, dd = lhs_ensemble(nsamples, Uniform(zbnds...), Normal(dpars...))
     for s in 1:nsamples
         zₚ = Normal(zd[s], 0.1)
         Qₚ = LogNormal(log(qwbm/sqrt(1+dd[s]^2)), log(1+dd[s]^2))
         Qe, ne, re, ze = prior_ensemble(x, Qₚ, nₚ, rₚ, zₚ, nens)
-        he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), mean(S, dims=2), x, maximum(H, dims=2),
-                           maximum(W, dims=2), Qe, [mean(ne) for i in 1:nens], [mean(re) for i in 1:nens], ze)
+        he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), S0, x, maximum(H, dims=2), maximum(W, dims=2), Qe, [mean(ne) for i in 1:nens], [mean(re) for i in 1:nens], ze)
         i = findall(he[1, :] .> 0)
-        h[s] = mean(he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i])
+        h[s] = mean(he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i]);
     end
     zd = zd[.!isnan.(h)]
     dd = dd[.!isnan.(h)]
@@ -132,18 +130,19 @@ Estimate the bounds of the prior distributions.
 
 """
 function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
-    @info "Estimating prior distribution bounds"
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
+    S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     # We will use arbitrary values that are large enough to represent the uninformative priors
-    zₚ = Uniform(minimum(H[1, :]) - 30, minimum(H[1, :]))
+    zₚ = Uniform(minimum(H[1, :]) - 20, minimum(H[1, :]))
     Qₚ = Uniform(qwbm / 10, qwbm * 10)
     ze = zeros(length(x), nsamples)
     Qe, ze[1, :] = lhs_ensemble(nsamples, Qₚ, zₚ)
     re = rand(rₚ, nsamples)
     ne = rand(nₚ, nsamples)
-    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), mean(S, dims=2), x, maximum(H, dims=2),
-                      maximum(W, dims=2), Qe, [mean(ne) for i in 1:nsamples], [mean(re) for i in 1:nsamples], ze)
+    ze = zeros(length(x), nsamples)
+    Qe, ze[1, :] = lhs_ensemble(nsamples, Qₚ, zₚ)
+    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), S0, x, maximum(H, dims=2), maximum(W, dims=2), Qe, [mean(ne) for i in 1:nsamples], [mean(re) for i in 1:nsamples], ze)
     i = findall(he[1, :] .> 0)
     h = he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i]
     j = i[(h .> minimum(H[end, :])) .& (h .< maximum(H[end, :]))]
