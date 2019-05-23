@@ -1,4 +1,4 @@
-#!/usr/bin/env julia
+# module Swot
 
 using Sads
 using Distributions
@@ -71,3 +71,10 @@ function main()
 end
 
 main()
+
+# Base.@ccallable function julia_main(ARGS::Vector{String})::Cint
+#     main(ARGS)
+#     return 0
+# end
+
+# end
