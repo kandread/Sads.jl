@@ -85,7 +85,12 @@ function discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zₚ)
     Fmod = kde(h)
     L = 1
     accepted = [rand(Uniform(0, L)) * pdf(Fmod, s) <= pdf(Fobs, s) for s in  h]
-    mean(δ[accepted]), std(δ[accepted])
+    if length(findall(accepted)) < 2
+        δₘ, δₛ = δ[findmin(abs.(h .- mean(obs)))[2]], 0.01
+    else
+        δₘ, δₛ = mean(δ[accepted]), std(δ[accepted])
+    end
+    δₘ, δₛ
 end
 
 """
@@ -115,7 +120,12 @@ function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, d
     Fmod = kde(h)
     L = 1
     accepted = [rand(Uniform(0, L)) * pdf(Fmod, s) <= pdf(Fobs, s) for s in h]
-    mean(zd[accepted]), std(zd[accepted])
+    if length(findall(accepted)) < 2
+        zₘ, zₛ = zd[findmin(abs.(h .- mean(obs)))[2]], 0.1
+    else
+        zₘ, zₛ = mean(zd[accepted]), std(zd[accepted])
+    end
+    zₘ, zₛ
 end
 
 """
