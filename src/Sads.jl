@@ -1,6 +1,5 @@
 module Sads
 
-using Logging
 using Distributions
 using KernelDensity: kde
 
