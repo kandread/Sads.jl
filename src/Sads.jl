@@ -16,7 +16,7 @@ Estimate discharge by assimilating observed water surface elevations along a riv
 """
 function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=1000, nens=100)
     zm, zs, dm, ds, qb = priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
-    Qₚ = Truncated(LogNormal(log(qprior/sqrt(1+dm^2)), log(1+dm^2)), qb[1], qb[2])
+    Qₚ = Truncated(LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), qb[1], qb[2])
     Qa = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2),
                     Qₚ, nₚ, rₚ, Normal(zm, zs), nens, ri)
     Qa
