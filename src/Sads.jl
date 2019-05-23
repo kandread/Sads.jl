@@ -15,32 +15,60 @@ Estimate discharge by assimilating observed water surface elevations along a riv
 
 """
 function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=1000, nens=100)
-    zm, zs, dm, ds = priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
+    zm, zs, dm, ds, qb = priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
+    Qₚ = Truncated(LogNormal(log(qprior/sqrt(1+dm^2)), log(1+dm^2)), qb[1], qb[2])
     Qa = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2),
-                    LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), nₚ, rₚ, Normal(zm, zs), nens, ri)
+                    Qₚ, nₚ, rₚ, Normal(zm, zs), nens, ri)
     Qa
 end
 
 """
 Assimilate SWOT observations for river reach.
 
+- `H`: water surface elevation
+- `W`: water surface width
+- `x`: downstream distance for each cross section
+- `wbf`: bankfull width
+- `hbf`: bankfull depth
+- `Qₚ`: prior probability distribution for discharge
+- `nₚ`: prior probability distribution for roughness coefficient
+- `rₚ`: prior probability distribution for channel shape parameter
+- `zₚ`: prior distribution for downstream bed elevation
+- `nens`: ensemble size
+- `ri`: reach definition indices
+- `ϵₒ`: observation error standard deviation
+- `cv_thresh`: threshold for using dynamic or time-constant bed slope
+
 """
-function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0.01, cv_thresh=1.5)
+function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0.01, cv_thresh=0.3, logQ=false)
     Qa = zeros(length(ri)-1, size(H, 2))
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
+    scv = mean(std(S, dims=2)' ./ mean(S, dims=2))
+    slope_cv = mean(scv[.!isnan.(scv)])
+    S0 = [mean(S[j, :]) >= 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     ze = zeros(length(x), nens)
     Qe, ne, re, ze[1, :] = lhs_ensemble(nens, Qₚ, nₚ, rₚ, zₚ)
-    for t in 1:size(H,2)
-        he = gvf_ensemble!(H[:, t], W[:, t], S[:, t], x, hbf, wbf, Qe, ne, re, ze)
+    for t in 1:size(H, 2)
+        rri = [ri[1:end-1]; length(x) + 1]
+        So = slope_cv > cv_thresh ? S0 : [S[j,t] > 0 ? S[j,t] : S0[j,1] for j in 1:length(x)]
+        he = gvf_ensemble!(H[:, t], W[:, t], So, x, hbf, wbf, Qe, ne, re, ze)
         i = findall(he[1, :] .> 0)
         h = ze .+ he .* ((re .+ 1) ./ re)'
         X = repeat(Qe[i]', outer=length(ri)-1)
         XA = h[:, i]
         d = H[:, t]
         E = rand(Normal(ϵₒ, 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
-        A = letkf(X, d, XA, E, [[j] for j in 1:length(ri)-1], [collect(ri[j]:ri[j+1]-1) for j in 1:length(ri)-1], diagR=true)
-        Qa[:, t] = mean(abs.(A), dims=2)  # could also use the absolute of the mean
+        if logQ
+            A = letkf(log.(X), d, XA, E, [[j] for j in 1:length(ri)-1],
+                      [collect(rri[j]:rri[j+1]-1) for j in 1:length(ri)-1], diagR=true)
+            Qa[:, t] = mean(exp.(A), dims=2)
+        else
+            A = letkf(X, d, XA, E, [[j] for j in 1:length(ri)-1],
+                      [collect(rri[j]:rri[j+1]-1) for j in 1:length(ri)-1], diagR=true)
+            A[A .< 0] .= 0.0
+            Qa[:, t] = mean(A, dims=2)  # could also use the absolute of the mean
+        end
     end
     Qa
 end
@@ -53,7 +81,7 @@ function priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
     zbnds, qbnds = prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
     dm, ds = discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, Normal(minimum(H[1, :]), 0.1))
     zm, zs = bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, [dm, ds])
-    zm, zs, dm, ds
+    zm, zs, dm, ds, qbnds
 end
 
 """

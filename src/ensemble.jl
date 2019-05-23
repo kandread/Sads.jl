@@ -67,7 +67,7 @@ function gvf_ensemble!(H, W, S, x, hbf, wbf, Qe, ne, re, ze, perturb_slope=false
     ybf = hbf .- ze
     he = zeros(length(x), nens)
     for i in 1:nens
-        he[:, i] = gvf(Qe[i], (H[1]-ze[1, i])*re[i]/(re[i] + 1), W[1], S, ne[i], x, wbf, ybf[:, i], [re[i] for _ in 1:length(x)]);
+        he[:, i] = gvf(Qe[i], (H[1]-ze[1, i])*re[i]/(re[i] + 1), W[1], S, ne[i], x, wbf, ybf[:, i], [re[i] for _ in 1:length(x)])
     end
     he
 end
