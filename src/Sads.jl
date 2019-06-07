@@ -17,8 +17,8 @@ Estimate discharge by assimilating observed water surface elevations along a riv
 function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=1000, nens=100)
     zm, zs, dm, ds, qb = priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
     Qₚ = Truncated(LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), qb[1], qb[2])
-    Qa = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2),
-                    Qₚ, nₚ, rₚ, Normal(zm, zs), nens, ri)
+    Qa, A0, n = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2),
+                           Qₚ, nₚ, rₚ, Normal(zm, zs), nens, ri)
     Qa
 end
 
@@ -42,6 +42,44 @@ function bed_slope(S, H, W, x, hbf, wbf, Qₚ, nₚ, rₚ, zₚ, nens; ϵₒ=0.0
     E = rand(Normal(ϵₒ, 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
     A = letkf(X, d, XA, E, [collect(1:length(x))], [collect(1:length(d))], diagR=true)
     mean(A, dims=2)[:, 1]
+end
+
+"""
+Estimate parameters for discharge estimation, i.e. A₀ and n.
+
+"""
+function estimate_Q_params(H, W, x, ri, ze, re, ne, Qa)
+    nr = size(Qa, 1)
+    nens = length(ne)
+    A0 = zeros(size(Qa))
+    n = zeros(size(Qa))
+    S = diff(H, dims=1) ./ diff(x)
+    S = [S[1, :]'; S]
+    S[S .<= 0] .= minimum(S[S .> 0])
+    wbf = maximum(W, dims=2)
+    hbf = maximum(H, dims=2)
+    Hmin = H[:, findmin(H[1, :])[2]]
+    Wmin = W[:, findmin(H[1, :])[2]]
+    A0e = wbf .* (1 ./ (hbf .- ze)).^(1/re) .* (Hmin .- ze).^(1/re)
+    A0e = [mean(A0e[ri[j]:ri[j+1], e]) for j in 1:nr, e in 1:nens]
+    for t in 1:size(H, 2)
+        Hr = [mean(H[ri[j]:ri[j+1], t]) for j in 1:nr]
+        Wr = [mean(W[ri[j]:ri[j+1], t]) for j in 1:nr]
+        Sr = [(H[ri[j+1], t] - H[ri[j], t]) / (x[ri[j+1]] - x[ri[j]]) for j in 1:nr]
+        dA = (H[:, t] .- Hmin) .* (W[:, t] .+ Wmin) / 2
+        dAr = [mean(dA[ri[j]:ri[j+1]]) for j in 1:nr]
+        Qp = (1 ./ ne') .* (A0e .+ dAr).^(5/3) .* Wr.^(-2/3) .* Sr.^(1/2)
+        X = zeros(nr*2, nens)
+        X[1:2:end, :] = A0e
+        X[2:2:end, :] = repeat(ne', outer=nr)
+        XA = Qp
+        d = Qa[:, t]
+        E = rand(Normal(0.1*mean(Qa[:, t]), 1e-6), length(d), nens) .* rand([-1, 1], length(d), nens)
+        A = letkf(X, d, XA, E, [[2*j-1;2*j] for j in 1:nr], [[j] for j in 1:nr], diagR=true)
+        A0[:, t] = mean(A[1:2:end, :], dims=2)
+        n[:, t] = mean(A[2:2:end, :], dims=2)
+    end
+    A0, n
 end
 
 """
@@ -89,7 +127,12 @@ function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0
             Qa[:, t] = mean(A, dims=2)  # could also use the absolute of the mean
         end
     end
-    Qa
+    # remove outliers
+    outlier = findall(mean(Qa,dims=2)[:, 1] ./ mean(Qa) .> 1.5)
+    Qa[outlier, :] .= mean(Qa[[i for i in setdiff(Set(1:size(Qa, 1)), Set(outlier))], :], dims=1)
+    # estimate SWOT parameters
+    A0, n = estimate_Q_params(H, W, x, ri, ze, re, ne, Qa)
+    Qa, A0, n
 end
 
 """
