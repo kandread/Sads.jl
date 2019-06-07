@@ -23,6 +23,28 @@ function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=10
 end
 
 """
+Estimate bed slope by assimilating observed water surface elevations.
+
+"""
+function bed_slope(S, H, W, x, hbf, wbf, Qₚ, nₚ, rₚ, zₚ, nens; ϵₒ=0.01)
+    S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : mean(S[j, :][S[j,:] .> 0]) for j in 1:size(S, 1)]
+    S0[isnan.(S0)] .= minimum(S[S .> 0])
+    Se = rand.(Normal(1., 0.2), length(x), nens)
+    Se = [Se[i, j] .* S0[i] for i in 1:length(x), j in 1:nens]
+    ze = zeros(length(x), nens)
+    Qe, ne, re, ze[1, :] = lhs_ensemble(nens, Qₚ, nₚ, rₚ, zₚ)
+    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), Se, x, hbf, wbf, Qe, ne, re, ze)
+    i = findall(he[1, :] .> 0)
+    h = ze .+ he .* ((re .+ 1) ./ re)'
+    X = Se[:, i]
+    XA = h[:, i]
+    d = mean(H, dims=2)[:, 1]
+    E = rand(Normal(ϵₒ, 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
+    A = letkf(X, d, XA, E, [collect(1:length(x))], [collect(1:length(d))], diagR=true)
+    mean(A, dims=2)[:, 1]
+end
+
+"""
 Assimilate SWOT observations for river reach.
 
 - `H`: water surface elevation
