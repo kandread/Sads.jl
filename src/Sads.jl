@@ -66,14 +66,11 @@ function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0
     Qa = zeros(length(ri)-1, size(H, 2))
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
-    scv = mean(std(S, dims=2)' ./ mean(S, dims=2))
-    slope_cv = mean(scv[.!isnan.(scv)])
-    S0 = [mean(S[j, :]) >= 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
+    So = bed_slope(S, H, W, x, hbf, wbf, Qₚ, nₚ, rₚ, zₚ, nens)
     ze = zeros(length(x), nens)
     Qe, ne, re, ze[1, :] = lhs_ensemble(nens, Qₚ, nₚ, rₚ, zₚ)
     for t in 1:size(H, 2)
         rri = [ri[1:end-1]; length(x) + 1]
-        So = slope_cv > cv_thresh ? S0 : [S[j,t] > 0 ? S[j,t] : S0[j,1] for j in 1:length(x)]
         he = gvf_ensemble!(H[:, t], W[:, t], So, x, hbf, wbf, Qe, ne, re, ze)
         i = findall(he[1, :] .> 0)
         h = ze .+ he .* ((re .+ 1) ./ re)'
