@@ -54,20 +54,20 @@ and associated profiles of bed elevation.
 - `perturb_slope`: treat water surface slope stochastically (default is false)
 
 """
-function gvf_ensemble!(H, W, S, x, hbf, wbf, Qe, ne, re, ze, perturb_slope=false)
+function gvf_ensemble!(H, W, S, x, hbf, wbf, Qe, ne, re, ze)
     nens = length(Qe)
-    if perturb_slope
-        Se = rand.(Normal(1., 0.2), length(x), nens)
+    if ndims(S) > 1
+        Se = S
     else
-        Se = ones(length(x), nens)
+        Se = repeat(S', outer=nens)'
     end
     for j in 2:length(x)
-        ze[j, :] = ze[j-1, :] .+ S[j] .* Se[j, :] .* (x[j] - x[j-1]);
+        ze[j, :] = ze[j-1, :] .+ Se[j, :] .* (x[j] - x[j-1]);
     end
     ybf = hbf .- ze
     he = zeros(length(x), nens)
     for i in 1:nens
-        he[:, i] = gvf(Qe[i], (H[1]-ze[1, i])*re[i]/(re[i] + 1), W[1], S, ne[i], x, wbf, ybf[:, i], [re[i] for _ in 1:length(x)])
+        he[:, i] = gvf(Qe[i], (H[1]-ze[1, i])*re[i]/(re[i] + 1), W[1], Se[:, i], ne[i], x, wbf, ybf[:, i], [re[i] for _ in 1:length(x)])
     end
     he
 end
