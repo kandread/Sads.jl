@@ -19,7 +19,7 @@ function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=10
     Qₚ = Truncated(LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), qb[1], qb[2])
     Qa, A0, n = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2),
                            Qₚ, nₚ, rₚ, Normal(zm, zs), nens, ri)
-    Qa
+    Qa, A0, n
 end
 
 """
@@ -60,12 +60,17 @@ function estimate_Q_params(H, W, x, ri, ze, re, ne, Qa)
     hbf = maximum(H, dims=2)
     Hmin = H[:, findmin(H[1, :])[2]]
     Wmin = W[:, findmin(H[1, :])[2]]
-    A0e = wbf .* (1 ./ (hbf .- ze)).^(1/re) .* (Hmin .- ze).^(1/re)
+    ybf = hbf .- ze
+    ymin = Hmin .- ze
+    ybf[ybf .< 0] .= 0.0
+    ymin[ymin .< 0] .= 0.0
+    A0e = wbf .* (1 ./ ybf).^(1/re) .* ymin.^(1/re)
     A0e = [mean(A0e[ri[j]:ri[j+1], e]) for j in 1:nr, e in 1:nens]
     for t in 1:size(H, 2)
         Hr = [mean(H[ri[j]:ri[j+1], t]) for j in 1:nr]
         Wr = [mean(W[ri[j]:ri[j+1], t]) for j in 1:nr]
-        Sr = [(H[ri[j+1], t] - H[ri[j], t]) / (x[ri[j+1]] - x[ri[j]]) for j in 1:nr]
+        # Sr = [(H[ri[j+1], t] - H[ri[j], t]) / (x[ri[j+1]] - x[ri[j]]) for j in 1:nr]
+        Sr = [abs(mean(S[ri[j]:ri[j+1], t])) for j in 1:nr]
         dA = (H[:, t] .- Hmin) .* (W[:, t] .+ Wmin) / 2
         dAr = [mean(dA[ri[j]:ri[j+1]]) for j in 1:nr]
         Qp = (1 ./ ne') .* (A0e .+ dAr).^(5/3) .* Wr.^(-2/3) .* Sr.^(1/2)
@@ -100,7 +105,7 @@ Assimilate SWOT observations for river reach.
 - `cv_thresh`: threshold for using dynamic or time-constant bed slope
 
 """
-function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0.01, cv_thresh=0.3, logQ=false)
+function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0.01, logQ=false)
     Qa = zeros(length(ri)-1, size(H, 2))
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
