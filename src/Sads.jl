@@ -229,7 +229,7 @@ function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
     S = [S[1, :]'; S]
     S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     # We will use arbitrary values that are large enough to represent the uninformative priors
-    zₚ = Uniform(minimum(H[1, :]) - 20, minimum(H[1, :]))
+    zₚ = Uniform(minimum(H[1, :]) - 30, minimum(H[1, :]))
     Qₚ = Uniform(qwbm / 10, qwbm * 10)
     ze = zeros(length(x), nsamples)
     Qe, ze[1, :] = lhs_ensemble(nsamples, Qₚ, zₚ)
