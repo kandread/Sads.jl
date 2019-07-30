@@ -246,4 +246,23 @@ function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
     zbnds, qbnds
 end
 
+"""
+Estimate At-a-station Hydraulic Geometry coefficients.
+
+"""
+function estimate_ahg(r, n, wbf, ybf, S)
+    p = 2 / 3
+    q = 1 / 2
+    κ = S^q / n
+    δ = 1 + r + r * p
+    R = (1 + r) / r
+    α = wbf.^((r + r * p) / δ) .* (ybf ./ R).^(-(1 + p) / δ) .* κ.^(-1 / δ)
+    c = wbf.^(-r / δ) .* (ybf / R).^(1 / δ) .* κ.^(-r / δ)
+    k = wbf.^(-r * p / δ) .* (ybf / R).^(p / δ) .* κ.^((1 + r) / δ)
+    b = 1 / δ
+    f = r / δ
+    m = p * r / δ
+    return α, c, k, b, f, m
+end
+
 end
