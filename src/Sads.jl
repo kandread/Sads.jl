@@ -73,7 +73,9 @@ function estimate_Q_params(H, W, x, ri, ze, re, ne, Qa)
         Sr = [abs(mean(S[ri[j]:ri[j+1], t])) for j in 1:nr]
         dA = (H[:, t] .- Hmin) .* (W[:, t] .+ Wmin) / 2
         dAr = [mean(dA[ri[j]:ri[j+1]]) for j in 1:nr]
-        Qp = (1 ./ ne') .* (A0e .+ dAr).^(5/3) .* Wr.^(-2/3) .* Sr.^(1/2)
+        A = A0e .+ dAr
+        A[A .< 0] .= 0.0
+        Qp = (1 ./ ne') .* A.^(5/3) .* Wr.^(-2/3) .* Sr.^(1/2)
         X = zeros(nr*2, nens)
         X[1:2:end, :] = A0e
         X[2:2:end, :] = repeat(ne', outer=nr)
@@ -193,7 +195,7 @@ Estimate the prior probability distribution of bed elevation.
 function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, dpars)
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
-    S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)];
+    S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     obs = [h for h in H[end, :]]
     Fobs=kde(obs)
     h = zeros(nsamples)
