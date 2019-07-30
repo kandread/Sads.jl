@@ -5,19 +5,31 @@ using Distributions
 using NCDatasets
 
 function load_severn(ncfile)
+    res = 90.0
     ds = Dataset(ncfile)
     xs = ds.group["XS_Timseries"]
     W = xs["W"][:]; W = W[end:-1:1, :]
-    H = xs["H_90m"][:]; H = H[end:-1:1, :]
-    x = collect(0.0:90.0:(size(H, 1)-1)*90)
+    H = xs["H_1km"][:]; H = H[end:-1:1, :]
+    x = collect(0.0:res:(size(H, 1)-1)*res)
     ri = [1;length(x)]
     Q = xs["Q"][:]; Q = Q[end:-1:1, :]
     qwbm = mean(Q[Q .> 0])
     close(ds)
-    Q = Q[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
-    W = W[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
-    H = H[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
-    Q, H, W, x, qwbm, ri
+    Qr = zeros(size(Q))
+    Wr = zeros(size(W))
+    Hr = zeros(size(H))
+    for t in 1:size(H,2)
+        j = sortperm(H[:,t])
+        Qr[:,t] .= Q[j,t]
+        Wr[:,t] .= W[j,t]
+        Hr[:,t] .= H[j,t]
+    end
+    Qr = Qr[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
+    Wr = Wr[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
+    Hr = Hr[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
+    Wr[Wr .== 0] .= mean(Wr) 
+    Hr[Hr .== 0] .= mean(Hr)
+    Qr, Hr, Wr, x, qwbm, ri
 end
 
 "Load hydraulic variables from NetCDF file."
