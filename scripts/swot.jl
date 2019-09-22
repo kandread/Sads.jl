@@ -4,35 +4,8 @@ using Sads
 using Distributions
 using NCDatasets
 
-function load_severn(ncfile)
-    res = 90.0
-    ds = Dataset(ncfile)
-    xs = ds.group["XS_Timseries"]
-    W = xs["W"][:]; W = W[end:-1:1, :]
-    H = xs["H_1km"][:]; H = H[end:-1:1, :]
-    x = collect(0.0:res:(size(H, 1)-1)*res)
-    ri = [1;length(x)]
-    Q = xs["Q"][:]; Q = Q[end:-1:1, :]
-    qwbm = mean(Q[Q .> 0])
-    close(ds)
-    Qr = zeros(size(Q))
-    Wr = zeros(size(W))
-    Hr = zeros(size(H))
-    for t in 1:size(H,2)
-        j = sortperm(H[:,t])
-        Qr[:,t] .= Q[j,t]
-        Wr[:,t] .= W[j,t]
-        Hr[:,t] .= H[j,t]
-    end
-    Qr = Qr[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
-    Wr = Wr[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
-    Hr = Hr[:, findall(all(.!isnan.(H), dims=1)[1,: ])]
-    Wr[Wr .== 0] .= mean(Wr) 
-    Hr[Hr .== 0] .= mean(Hr)
-    Qr, Hr, Wr, x, qwbm, ri
-end
 
-"Load hydraulic variables from NetCDF file."
+"Load hydraulic variables from Pepsi-1 NetCDF file."
 function load_data(ncfile)
     ds = Dataset(ncfile)
     xs = NCDatasets.group(ds, "XS_Timeseries")
@@ -50,31 +23,49 @@ function load_data(ncfile)
     Q, H, W, x, qwbm, ri
 end
 
+"Read data from SWOT NetCDF file."
+function read_data(ncfile)
+    ds = Dataset(ncfile)
+    x = ds["XS_90m"][:] .* 90.0 .- 90
+    xs = NCDatasets.group(ds, "XS_Timseries")
+    W = xs["W"][:]
+    H = xs["H_1km"][:]
+    Q = xs["Q"][:]
+    close(ds)
+    j = findall(sum(isnan.(H), dims=1)[1, :] .== 0)
+    H = sort(H[:, j], dims=1)
+    W = W[:, j]; W = W[end:-1:1, :]
+    Q = Q[:, j]; Q = Q[end:-1:1, :]
+    qwbm = mean(abs.(Q))
+    ri = [1; length(x)]
+    Q, H, W, x, qwbm, ri
+end
+
 "Write output data to NetCDF file."
 function write_data(ncfile, H, W, x, ri, Qa, A0, n)
     nr, nt = size(Qa)
     ds = Dataset(ncfile, "c")
-    defDim(ds, "reach", nr)
-    defDim(ds, "time", nt)
+    defDim(ds, "nx", nr)
+    defDim(ds, "nt", nt)
     Hr = [mean(H[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]
     Wr = [mean(W[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]
     Sr = [(H[ri[j+1], t] - H[ri[j], t]) / (x[ri[j+1]] - x[ri[j]]) for j in 1:nr, t in 1:nt]
-    Hvar = defVar(ds, "H", Float32, ("reach", "time"))
+    Hvar = defVar(ds, "H", Float32, ("nx", "nt"))
     Hvar.attrib["units"] = "m"
     Hvar.attrib["comments"] = "Water Surface Elevation"
-    Wvar = defVar(ds, "W", Float32, ("reach", "time"))
+    Wvar = defVar(ds, "W", Float32, ("nx", "nt"))
     Wvar.attrib["units"] = "m"
     Wvar.attrib["comments"] = "Width"
-    Svar = defVar(ds, "S", Float32, ("reach", "time"))
+    Svar = defVar(ds, "S", Float32, ("nx", "nt"))
     Svar.attrib["units"] = "m/m"
     Svar.attrib["comments"] = "Water Surface Slope"
-    Qvar = defVar(ds, "Q", Float32, ("reach", "time"))
+    Qvar = defVar(ds, "Q", Float32, ("nx", "nt"))
     Qvar.attrib["units"] = "m3/s"
     Qvar.attrib["comments"] = "Discharge"
-    nvar = defVar(ds, "n", Float32, ("reach", "time"))
+    nvar = defVar(ds, "n", Float32, ("nx", "nt"))
     nvar.attrib["units"] = "unitless"
     nvar.attrib["comments"] = "Manning's roughness"
-    A0var = defVar(ds, "A0", Float32, ("reach", "time"))
+    A0var = defVar(ds, "Abase", Float32, ("nx", "nt"))
     Hvar[:, :] = Hr
     Wvar[:, :] = Wr
     Svar[:, :] = Sr
