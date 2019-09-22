@@ -208,8 +208,8 @@ Estimate the prior probability distributions of bed elevation and discharge usin
 function priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
     zbnds, qbnds = prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
     dm, ds = discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, Normal(minimum(H[1, :]), 0.1))
-    zm, zs = bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, [dm, ds])
-    zm, zs, dm, ds, qbnds
+    zm, zs = bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, [dm, ds], qbnds)
+    zm, zs, dm, ds, zbnds, qbnds
 end
 
 """
@@ -219,7 +219,7 @@ Estimate the prior probability distribution of discharge.
 function discharge_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zₚ)
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
-    S0 = S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
+    S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     obs = [std(sample(H[end, :], nens)) for _ in 1:nsamples]
     Fobs = kde(obs)
     h = zeros(nsamples)
@@ -251,34 +251,27 @@ end
 Estimate the prior probability distribution of bed elevation.
 
 """
-function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, dpars)
+function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, dpars, qbnds)
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
     S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
-    obs = [h for h in H[end, :]]
-    Fobs=kde(obs)
-    h = zeros(nsamples)
-    zd, dd = lhs_ensemble(nsamples, Uniform(zbnds...), Normal(dpars...))
-    for s in 1:nsamples
-        zₚ = Normal(zd[s], 0.1)
-        Qₚ = LogNormal(log(qwbm/sqrt(1+dd[s]^2)), log(1+dd[s]^2))
-        Qe, ne, re, ze = prior_ensemble(x, Qₚ, nₚ, rₚ, zₚ, nens)
-        he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), S0, x, maximum(H, dims=2), maximum(W, dims=2), Qe, [mean(ne) for i in 1:nens], [mean(re) for i in 1:nens], ze)
-        i = findall(he[1, :] .> 0)
-        h[s] = mean(he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i]);
-    end
-    zd = zd[.!isnan.(h)]
-    dd = dd[.!isnan.(h)]
-    h = h[.!isnan.(h)]
-    Fmod = kde(h)
-    L = 1
-    accepted = [rand(Uniform(0, L)) * pdf(Fmod, s) <= pdf(Fobs, s) for s in h]
-    if length(findall(accepted)) < 2
-        zₘ, zₛ = zd[findmin(abs.(h .- mean(obs)))[2]], 0.1
-    else
-        zₘ, zₛ = mean(zd[accepted]), std(zd[accepted])
-    end
-    zₘ, zₛ
+    # S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : minimum(S[j, :][S[j, :] .> 0]) for j in 1:size(S, 1)]
+    dm, ds = dpars
+    Qₚ = Truncated(LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), qbnds[1], qbnds[2])
+    zₚ = Uniform(zbnds...)
+    Qe, ne, re, ze = prior_ensemble(x, Qₚ, nₚ, rₚ, zₚ, nsamples)
+    So = bed_slope(S, H, W, x, maximum(H, dims=2), maximum(W, dims=2), Qₚ, nₚ, rₚ, zₚ, nens)
+    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), So, x, maximum(H, dims=2), maximum(W, dims=2), Qe, ne, re, ze)
+    h  = he .* ((re .+ 1) ./ re)' .+ ze
+    i = findall([!((any(diff(h[:, e]) .< 0)) | (he[1, e] < 0))  for e in 1:size(h, 2)])
+    X = reshape(ze[1, i], 1, length(i))
+    XA  = he[:,i] .* ((re[i] .+ 1) ./ re[i])' .+ ze[:,i]
+    d = mean(H, dims=2)[:, 1]
+    E = rand(Normal(0.1, 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
+    A = letkf(X, d, XA, E, [[1]], [collect(1:length(d))], diagR=true)
+    zm = mean(A)
+    zs = std(A)
+    zm, zs
 end
 
 """
