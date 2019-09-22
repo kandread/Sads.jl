@@ -92,11 +92,20 @@ end
 
 "Main driver routine."
 function main()
-    ncfile = ARGS[1]
+    ncpath = ARGS[1]
     rₚ = eval(Symbol(ARGS[2]))(parse(Float64, ARGS[3]), parse(Float64, ARGS[4]))
-    Q, H, W, x, qwbm, ri = load_severn(ncfile)
-    Qa, A0, n = Sads.estimate(qwbm, H, W, x, rₚ, ri)
-    write_data("sads_$ncfile", H, W, x, ri, Qa, A0, n)
+    ncfiles = joinpath.(abspath(ncpath), readdir(ncpath))
+    Qa = [Float64[] for _ in 1:length(ncfiles)]
+    A0 = [0.0 for _ in 1:length(ncfiles)]
+    n = [0.0 for _ in 1:length(ncfiles)]
+    H = Array{Array{Float64, 2}, 1}(undef, length(ncfiles))
+    W = Array{Array{Float64, 2}, 1}(undef, length(ncfiles))
+    for (i, ncfile) in enumerate(ncfiles)
+        Q, H[i], W[i], x, qwbm, ri = read_data(ncfile)
+        qa, a0, mann = Sads.estimate(qwbm, H[i], W[i], x, rₚ, ri)
+        Qa[i], A0[i], n[i] = qa[1, :], mean(a0), mean(mann)
+    end
+    write_data("sads_output.nc", H, W, Qa, A0, n)
 end
 
 main()
