@@ -143,6 +143,65 @@ function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0
 end
 
 """
+Assimilate SWOT observations and apply hydraulic geometry constraints to estimate discharge.
+
+"""
+function assimilateHG(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri, ϵₒ=0.01, loc=0)
+    Qa = zeros(length(ri)-1, size(H, 2))
+    S = diff(H, dims=1) ./ diff(x)
+    S = [S[1, :]'; S]
+    So = bed_slope(S, H, W, x, hbf, wbf, Qₚ, nₚ, rₚ, zₚ, nens)
+    ze = zeros(length(x), nens)
+    Qe, ne, re, ze[1, :] = lhs_ensemble(nens, Qₚ, nₚ, rₚ, zₚ)
+    for t in 1:size(H, 2)
+        rri = [ri[1:end-1]; length(x) + 1]
+        he = gvf_ensemble!(H[:, t], W[:, t], So, x, hbf, wbf, Qe, ne, re, ze)
+        h = he .* ((re .+ 1) ./ re)' .+ ze
+        i = findall([!((any(diff(h[:, e]) .< 0)) | (he[1, e] < 0))  for e in 1:size(h, 2)]) # i = findall(he[1, :] .> 0)
+        X = repeat(Qe[i]', outer=length(ri)-1)
+        if loc == 0
+            XA = zeros(length(x), length(i))
+            for j in 1:length(x)
+                py = polyfit(log.(Qe[i]), log.(he[j, i]), 1)
+                c = exp(py[0])
+                f = py[1]
+                XA[j, :] = c .* Qe[i]'.^f .* ((re[i] .+ 1) ./ re[i])'
+            end
+            XA = XA .+ ze[:, i]
+            d = H[:, t]
+        else
+            py = polyfit(log.(Qe[i]), log.(he[loc, i]), 1)
+            c=exp(py[0])
+            f=py[1]
+            XA = c .* X.^f .* ((re[i] .+ 1) ./ re[i])' .+ ze[loc, i]
+            d = [H[loc, t]]
+        end
+        E = rand(Normal(0.1, 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
+        A = letkf(X, d, XA, E, [[j] for j in 1:length(ri)-1], [collect(rri[j]:rri[j+1]-1) for j in 1:length(ri)-1], diagR=true)
+        A[A .<= 0] .= 0.0
+        A = reshape(mean(A, dims=1), 1, length(i))
+        Qc = zeros(nens)
+        Qc .= mean(A)
+        Qc[i] = A
+        he = gvf_ensemble!(H[:, t], W[:, t], So, x, hbf, wbf, Qc, ne, re, ze)
+        i = findall(he[1, :] .> 0)
+        h = ze .+ he .* ((re .+ 1) ./ re)'
+        X = repeat(Qc[i]', outer=length(ri)-1)
+        XA = h[:, i]
+        d = H[:, t]
+        E = rand(Normal(ϵₒ, 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
+        A = Sads.letkf(X, d, XA, E, [[j] for j in 1:length(ri)-1],
+                       [collect(rri[j]:rri[j+1]-1) for j in 1:length(ri)-1], diagR=true)
+        A[A .< 0] .= 0.0;
+        Qa[:, t] = mean(A, dims=2)  # could also use the absolute of the mean
+    end
+    # remove outliers
+    outlier = findall(mean(Qa, dims=2)[:, 1] ./ mean(Qa) .> 1.5)
+    #Qa[outlier, :] .= mean(Qa[[i for i in setdiff(Set(1:size(Qa, 1)), Set(outlier))], :], dims=1)
+    Qa
+end
+
+"""
 Estimate the prior probability distributions of bed elevation and discharge using rejection sampling.
 
 """
