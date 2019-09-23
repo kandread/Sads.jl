@@ -18,7 +18,7 @@ function estimate(qwbm, H, W, x, rₚ, ri; nₚ=Uniform(0.02, 0.05), nsamples=10
     zm, zs, dm, ds, qb = priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
     Qₚ = Truncated(LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), qb[1], qb[2])
     Qa, A0, n = assimilate(H, W, x, maximum(W, dims=2), maximum(H, dims=2),
-                           Qₚ, nₚ, rₚ, Normal(zm, zs), nens, ri)
+                           Qₚ, nₚ, rₚ, Normal(zm, 0.1), nens, ri)
     Qa, A0, n
 end
 
@@ -48,44 +48,38 @@ end
 Estimate parameters for discharge estimation, i.e. A₀ and n.
 
 """
-function estimate_Q_params(H, W, x, ri, ze, re, ne, Qa)
-    nr = size(Qa, 1)
+function estimate_Q_params(H, W, S, ri, ze, re, ne, Qa)
+    nr, nt = size(Qa)
     nens = length(ne)
-    A0 = zeros(size(Qa))
-    n = zeros(size(Qa))
-    S = diff(H, dims=1) ./ diff(x)
-    S = [S[1, :]'; S]
-    S[S .<= 0] .= minimum(S[S .> 0])
-    wbf = maximum(W, dims=2)
-    hbf = maximum(H, dims=2)
+    A0 = zeros(nr)
+    n = zeros(nr)
+    Wbf = maximum(W, dims=2)
+    Hbf = maximum(H, dims=2)
     Hmin = H[:, findmin(H[1, :])[2]]
     Wmin = W[:, findmin(H[1, :])[2]]
-    ybf = hbf .- ze
+    ybf = Hbf .- ze
     ymin = Hmin .- ze
     ybf[ybf .< 0] .= 0.0
     ymin[ymin .< 0] .= 0.0
-    A0e = wbf .* (1 ./ ybf).^(1/re) .* ymin.^(1/re)
+    A0e = Wbf .* (ymin ./ ybf).^(1 ./ re') .* (re ./ (re .+ 1))' .* ymin
+    # A0e = Wmin .* (re ./ (re .+ 1))' .* ymin
     A0e = [mean(A0e[ri[j]:ri[j+1], e]) for j in 1:nr, e in 1:nens]
-    for t in 1:size(H, 2)
-        Hr = [mean(H[ri[j]:ri[j+1], t]) for j in 1:nr]
-        Wr = [mean(W[ri[j]:ri[j+1], t]) for j in 1:nr]
-        # Sr = [(H[ri[j+1], t] - H[ri[j], t]) / (x[ri[j+1]] - x[ri[j]]) for j in 1:nr]
-        Sr = [abs(mean(S[ri[j]:ri[j+1], t])) for j in 1:nr]
-        dA = (H[:, t] .- Hmin) .* (W[:, t] .+ Wmin) / 2
-        dAr = [mean(dA[ri[j]:ri[j+1]]) for j in 1:nr]
-        A = A0e .+ dAr
-        A[A .< 0] .= 0.0
-        Qp = (1 ./ ne') .* A.^(5/3) .* Wr.^(-2/3) .* Sr.^(1/2)
-        X = zeros(nr*2, nens)
-        X[1:2:end, :] = A0e
-        X[2:2:end, :] = repeat(ne', outer=nr)
-        XA = Qp
-        d = Qa[:, t]
-        E = rand(Normal(0.1*mean(Qa[:, t]), 1e-6), length(d), nens) .* rand([-1, 1], length(d), nens)
-        A = letkf(X, d, XA, E, [[2*j-1;2*j] for j in 1:nr], [[j] for j in 1:nr], diagR=true)
-        A0[:, t] = mean(A[1:2:end, :], dims=2)
-        n[:, t] = mean(A[2:2:end, :], dims=2)
-    end
+    dA = (H .- Hmin) .* (W .+ Wmin) ./ 2
+    dA = reshape([mean(dA[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]', nr*nt, 1)
+    Wr = reshape([mean(W[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]', nr*nt, 1)
+    Sr = reshape([mean(S[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]', nr*nt, 1)
+    A = A0e .+ dA
+    A[A .< 0] .= 0.0
+    Qe = (1 ./ ne') .* A.^(5/3) .* Wr.^(-2/3) .* Sr.^(1/2)
+    X = zeros(nr*2, nens)
+    X[1:2:end, :] = A0e
+    X[2:2:end, :] = repeat(ne', outer=nr)
+    XA = Qe
+    d = reshape(Qa, nr*nt)
+    E = rand(Normal(0.1*mean(Qa), 1e-6), length(d), nens) .* rand([-1, 1], length(d), nens)
+    A = letkf(X, d, XA, E, [[2*j-1;2*j] for j in 1:nr], [collect(nt*j-1:nt*j) for j in 1:nr], diagR=true)
+    A0 = mean(A[1:2:end, :], dims=2)
+    n = mean(A[2:2:end, :], dims=2)
     A0, n
 end
 
@@ -138,7 +132,7 @@ function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0
     outlier = findall(mean(Qa,dims=2)[:, 1] ./ mean(Qa) .> 1.5)
     Qa[outlier, :] .= mean(Qa[[i for i in setdiff(Set(1:size(Qa, 1)), Set(outlier))], :], dims=1)
     # estimate SWOT parameters
-    A0, n = estimate_Q_params(H, W, x, ri, ze, re, ne, Qa)
+    A0, n = estimate_Q_params(H, W, S, ri, ze, re, ne, Qa)
     Qa, A0, n
 end
 
@@ -283,7 +277,7 @@ function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
     S = [S[1, :]'; S]
     S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     # We will use arbitrary values that are large enough to represent the uninformative priors
-    zₚ = Uniform(minimum(H[1, :]) - 30, minimum(H[1, :]))
+    zₚ = Uniform(minimum(H[1, :]) - 20, minimum(H[1, :]))
     Qₚ = Uniform(qwbm / 10, qwbm * 10)
     ze = zeros(length(x), nsamples)
     Qe, ze[1, :] = lhs_ensemble(nsamples, Qₚ, zₚ)
