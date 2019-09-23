@@ -114,7 +114,7 @@ function main()
         H[i, 1:size(h, 2)] = mean(h, dims=1)
         W[i, 1:size(w, 2)] = mean(w, dims=1)
         S[i, 1:size(w, 2)] = mean(diff(h, dims=1) ./ diff(x), dims=1)
-        Qa[i, 1:size(h, 2)], A0[i], n[i] = mean(qa, dims=1), a0, mann
+        Qa[i, 1:size(h, 2)], A0[i], n[i] = mean(qa, dims=1), mean(a0), mean(mann)
     end
     write_data("sads_output.nc", H, W, S, Qa, A0, n)
 end
