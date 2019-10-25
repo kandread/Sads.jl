@@ -142,7 +142,7 @@ end
 Assimilate SWOT observations and apply hydraulic geometry constraints to estimate discharge.
 
 """
-function assimilateHG(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri, ϵₒ=0.01, loc=0)
+function assimilateHG(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri, ϵₒ=0.01; loc=0)
     Qa = zeros(length(ri)-1, size(H, 2))
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
