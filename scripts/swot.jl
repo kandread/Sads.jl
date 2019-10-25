@@ -96,6 +96,42 @@ function nrmse(o, m)
     sqrt(mean(((o .- m) ./ mean(o)).^2))
 end
 
+"Compare theoretical with estimated AHG coefficients."
+function compare_ahg(Qa, H, W, x, qwbm, rₚ, nₚ=Uniform(0.02, 0.05), nens=100, nsamples=1000)
+    est = zeros(length(x), 6)
+    the = zeros(length(x), 6)
+    wbf, hbf, hmin = maximum(W, dims=2), maximum(H, dims=2), minimum(H[1, :])
+    S = diff(H, dims=1) ./ diff(x)
+    S = [S[1, :]'; S]
+    zm, zs, dm, ds, zb, qb = Sads.priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
+    Qₚ = Truncated(LogNormal(log(qwbm/sqrt(1+dm^2)), log(1+dm^2)), qb[1], qb[2])
+    zₚ = Normal(zm, 0.1)
+    So = Sads.bed_slope(S, H, W, x, hbf, wbf, Qₚ, nₚ, rₚ, zₚ, nens)
+    ze = zeros(length(x), size(H,2))
+    ze[1,:] .= zm
+    for j in 2:length(x) ze[j, :] = ze[j-1, :] .+ So[j] * (x[j] - x[j-1]); end
+    ybf = hbf .- ze[:, 1]
+    n = mean(rand(nₚ, nsamples))
+    r = mean(rand(rₚ, nsamples))
+    he = Sads.gvf_ensemble!(mean(H,dims=2), mean(W,dims=2), So, x, maximum(H, dims=2), maximum(W, dims=2), Qa, [n for _ in 1:size(H,2)], [r for _ in 1:size(H,2)], ze)
+    i = findall(he[1, :] .> 0)
+    h = he .* (r+1)/r .+ ze
+    S = diff(h, dims=1) ./ diff(x)
+    S = [S[1, :]'; S]
+    for xi=1:length(x)
+        py = polyfit(log.(Qa[i]), log.(he[xi,i]), 1)
+        w = wbf[end] * (he[xi, i] ./ ybf[xi]).^(1/r)
+        pw = polyfit(log.(Qa[i]), log.(w), 1)
+        sf = [S[xi,t] > 0 ? S[xi,t] : minimum(S[xi,S[xi,:] .> 0]) for t in 1:size(S,2)]
+        U = (1/n) .* he[end,i].^(2/3) .* sf[i].^(1/2)
+        pu = polyfit(log.(Qa[i]), log.(U), 1)
+        a, c, k, b, f, m = Sads.estimate_ahg(r, n, wbf[xi], maximum(he[xi,i]), mean(sf))
+        est[xi, :] = [exp(pw[0]), exp(py[0]), exp(pu[0]), pw[1], py[1], pu[1]]
+        the[xi, :] = [a, c, k, b, f, m]
+    end
+    est, the
+end
+
 "Main driver routine."
 function main()
     ncpath = ARGS[1]
