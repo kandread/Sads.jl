@@ -2,6 +2,7 @@ module Sads
 
 using Distributions
 using KernelDensity: kde
+using Polynomials: polyfit
 
 abstract type CrossSection end
 
