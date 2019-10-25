@@ -69,8 +69,9 @@ function estimate_Q_params(H, W, S, ri, ze, re, ne, Qa)
     dA = reshape([mean(dA[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]', nr*nt, 1)
     Wr = reshape([mean(W[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]', nr*nt, 1)
     Sr = reshape([mean(S[ri[j]:ri[j+1], t]) for j in 1:nr, t in 1:nt]', nr*nt, 1)
-    A = A0e .+ dA
+    A = repeat(A0e, outer=nt) .+ dA
     A[A .< 0] .= 0.0
+    Sr[Sr .< 0] .= minimum(Sr[Sr .> 0])
     Qe = (1 ./ ne') .* A.^(5/3) .* Wr.^(-2/3) .* Sr.^(1/2)
     X = zeros(nr*2, nens)
     X[1:2:end, :] = A0e
