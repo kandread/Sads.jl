@@ -209,6 +209,55 @@ function priors(qwbm, H, W, x, nₚ, rₚ, nsamples, nens)
 end
 
 """
+Estimate the mean of the discharge prior probability distribution.
+
+"""
+function discharge_prior_mean(qwbm, H, W, x, nₚ, rₚ, nens)
+    S = diff(H, dims=1) ./ diff(x)
+    S = [S[1, :]' S]
+    wbf = maximum(W, dims=2)
+    hbf = maximum(H, dims=2)
+    Qₚ = LogNormal(log(qwbm/sqrt(1+1.5^2)),log(1+1.5^2)) #Uniform(qwbm/10, qwbm*10)
+    zₚ = Uniform(minimum(H[1, :])-30, minimum(H[1, :]))
+    So = bed_slope(S, H, W, x, hbf, wbf, Qₚ, nₚ, rₚ, zₚ, nens)
+    ze = zeros(length(x), nens)
+    Qe, ne, re, ze[1, :] = lhs_ensemble(nens, Qₚ, nₚ, rₚ, zₚ)
+    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), So, x, hbf, wbf, Qe, ne, re, ze)
+    i = findall(he[1, :] .> 0)
+    X = zeros(1, length(i))
+    X[1, :] = log.(Qe[i])
+    r = repeat(re[i]', outer=length(x))
+    XA = wbf .* (1 ./ (hbf .- ze[:, i])).^(1 ./ r) .* ((r .+ 1) ./ r).^(1 ./ r) .* he[:, i].^(1 ./ r)
+    d = mean(W, dims=2)[:, 1]
+    E = rand(Normal(0.25*mean(W), 1e-6), length(d), length(i)) .* rand([-1, 1], length(d), length(i))
+    A = letkf(X, d, XA, E, [[1]], [collect(1:length(d))], diagR=true)
+    qm = exp.(A)
+    Qₚ = Normal(mean(qm), std(qm)) #Uniform(mean(qm)/10,10*mean(qm))
+    Qa = lhs_ensemble(nens, Qₚ)[1]
+    Qa = abs.(Qa)
+    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), So, x, hbf, wbf, Qa, ne, re, ze)
+    i = findall(he[1, :] .> 0)
+    r = repeat(re[i]', outer=length(x))
+    X = zeros(1,length(i))
+    X[1,:] = log.(Qa[i])
+    YA = wbf .* (1 ./ (hbf .- ze[:, i])).^(1 ./ r) .* ((r .+ 1) ./ r).^(1 ./ r) .* he[:, i].^(1 ./ r)
+    nmin = minimum([size(XA, 2),size(YA, 2)])
+    db = d .- XA[:,1:nmin]
+    da = d.- YA[:,1:nmin]
+    du = YA[:, 1:nmin] .- XA[:, 1:nmin]
+    Qe = (tr(du * db') / tr((XA .- mean(XA, dims=2)) * (XA .- mean(XA, dims=2))')) .* Qe
+    he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), So, x, hbf, wbf, Qe, ne, re, ze)
+    i = findall(he[1, :] .> 0)
+    r = repeat(re[i]', outer=length(x))
+    X = zeros(1,length(i))
+    X[1, :] = log.(Qe[i])
+    YA = wbf .* (1 ./ (hbf .- ze[:, i])).^(1 ./ r) .* ((r .+ 1) ./ r).^(1 ./ r) .* he[:, i].^(1 ./ r)
+    nmin = minimum([size(XA, 2), size(YA, 2)])
+    A = letkf(X, d, YA, (tr(da * db') / tr(E * E'))*E[:, 1:nmin], [[1]], [collect(1:length(d))], diagR=true)
+    mean(exp.(A))
+end
+
+"""
 Estimate the prior probability distribution of discharge.
 
 """
