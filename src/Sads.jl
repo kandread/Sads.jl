@@ -271,15 +271,46 @@ function bed_elevation_prior(qwbm, nens, nsamples, H, W, x, nₚ, rₚ, zbnds, d
 end
 
 """
+Estimate the prior probability distribution of the channel shape parameter.
+
+"""
+function r_prior(nens, H, W, rinit, loc)
+    wi = unique(i -> W[loc, i], 1:length(W[loc, :]))
+    re = Sads.lhs_ensemble(nens, rinit)[1]
+    X = zeros(1, nens)
+    XA = zeros(length(wi)-2, nens); YA = zeros(length(wi)-2,nens);
+    X[1, :] = log.(re)
+    for t=1:length(wi)-2
+        ze =  (W[loc, wi[t]].^re .* H[loc, wi[t+1]] .- W[loc, wi[t+1]].^re .* H[loc, wi[t]]) ./ (W[loc, wi[t]].^re .- W[loc, wi[t+1]].^re)
+        ze[findall(ze .>= minimum(H[loc, :]))] .= minimum(H[loc, :]) - 0.01
+        XA[t, :] = ((H[loc, wi[t+2]] .- ze) ./ (H[loc, wi[t+1]] .- ze)).^(1 ./ re)
+    end
+    d = W[loc, wi][3:end] ./ W[loc, wi][2:end-1]
+    ϵ = std(W[loc, wi[1:end-1]] ./ W[loc, wi[2:end]])
+    E = rand(Normal(ϵ, 1e-6), length(d), nens) .* rand([-1, 1], length(d), nens)
+    A = Sads.letkf(X, d, XA, E, [[1]], [collect(1:length(d))])
+    ra = exp.(A)
+    for t=1:length(wi)-2
+        ze = (W[loc, wi[t]].^ra .* H[loc, wi[t+1]] .- W[loc, wi[t+1]].^ra .* H[loc, wi[t]]) ./ (W[loc, wi[t]].^ra .- W[loc, wi[t+1]].^ra)
+        ze[findall(ze .>= minimum(H[loc, :]))] .= minimum(H[loc, :]) - 0.01
+        YA[t, :] = ((H[loc, wi[t+2]] .- ze) ./ (H[loc, wi[t+1]] .- ze)).^(1 ./ ra)
+    end
+    db = d .- XA
+    da = d .- YA
+    A = Sads.letkf(X, d, XA, (tr(da * db') / tr(E * E')) * E, [[1]], [collect(1:length(d))]);
+    mean(exp.(A)), std(exp.(A))
+end
+
+"""
 Estimate the bounds of the prior distributions.
 
 """
-function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
+function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ, zlim=20)
     S = diff(H, dims=1) ./ diff(x)
     S = [S[1, :]'; S]
     S0 = [mean(S[j, :]) > 0 ? mean(S[j, :]) : maximum(S[j, :]) for j in 1:size(S, 1)]
     # We will use arbitrary values that are large enough to represent the uninformative priors
-    zₚ = Uniform(minimum(H[1, :]) - 20, minimum(H[1, :]))
+    zₚ = Uniform(minimum(H[1, :]) - zlim, minimum(H[1, :]))
     Qₚ = Uniform(qwbm / 10, qwbm * 10)
     ze = zeros(length(x), nsamples)
     Qe, ze[1, :] = lhs_ensemble(nsamples, Qₚ, zₚ)
