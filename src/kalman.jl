@@ -18,10 +18,14 @@ function letkf(A::Matrix, d::Vector, HA::Matrix, E::Matrix, xs::Vector, ys::Vect
     Aa = zeros(size(A))
     ndim, nens = size(A)
     nobs = length(d)
-    if diagR
-        R = diagm(0 => diag((1 / (nens - 1)) * E * E'))
+    if size(E) == (nobs, nobs)
+        R = E
     else
-        R = (1 / (nens - 1)) * E * E'
+        if diagR
+            R = diagm(0 => diag((1 / (nens - 1)) * E * E'))
+        else
+            R = (1 / (nens - 1)) * E * E'
+        end
     end
     Y = HA .- mean(HA, dims=2)
     X = A .- mean(A, dims=2)
