@@ -288,11 +288,16 @@ function prior_bounds(qwbm, nsamples, H, W, x, nₚ, rₚ)
     ze = zeros(length(x), nsamples)
     Qe, ze[1, :] = lhs_ensemble(nsamples, Qₚ, zₚ)
     he = gvf_ensemble!(mean(H, dims=2), mean(W, dims=2), S0, x, maximum(H, dims=2), maximum(W, dims=2), Qe, [mean(ne) for i in 1:nsamples], [mean(re) for i in 1:nsamples], ze)
-    i = findall(he[1, :] .> 0)
-    h = he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i]
-    j = i[(h .> minimum(H[end, :])) .& (h .< maximum(H[end, :]))]
-    zbnds = [minimum(ze[1, j]), maximum(ze[1, j])]
-    qbnds = [minimum(Qe[j]), maximum(Qe[j])]
+    try
+        i = findall(he[1, :] .> 0)
+        h = he[end, i] .* (mean(re) .+ 1) ./ mean(re) .+ ze[end, i]
+        j = i[(h .> minimum(H[end, :])) .& (h .< maximum(H[end, :]))]
+        zbnds = [minimum(ze[1, j]), maximum(ze[1, j])]
+        qbnds = [minimum(Qe[j]), maximum(Qe[j])]
+    catch
+        zbnds = [minimum(ze[1, :]), maximum(ze[1, :])]
+        qbnds = [minimum(Qe[1, :]), maximum(Qe[1, :])]
+    end
     zbnds, qbnds
 end
 
