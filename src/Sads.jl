@@ -140,8 +140,8 @@ function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0
     outlier = findall(mean(Qa,dims=2)[:, 1] ./ mean(Qa) .> 1.5)
     Qa[outlier, :] .= mean(Qa[[i for i in setdiff(Set(1:size(Qa, 1)), Set(outlier))], :], dims=1)
     # estimate SWOT parameters
-    A0, n = estimate_Q_params(H, W, S, ri, ze, re, ne, Qa)
-    Qa, A0, n
+    # A0, n = estimate_Q_params(H, W, S, ri, ze, re, ne, Qa)
+    Qa #, A0, n
 end
 
 """
