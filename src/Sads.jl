@@ -117,7 +117,7 @@ function assimilate(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri; ϵₒ=0
         i = findall(he[1, :] .> 0)
         if length(i) < min_ensemble_size
             Sf = [S[j, t] > 0 ? S[j, t] : minimum(S[:, t][S[:, t] .> 0]) for j=1:length(x)]
-            he = [(Qe[e] .* ne[e]) ./ (W[j, t] .* Sf.^0.5).^(3/5) for j=1:length(x), e=1:nens]
+            he = [(Qe[e] .* ne[e]) ./ (W[j, t] .* Sf[j].^0.5).^(3/5) for j=1:length(x), e=1:nens]
         end
         i = findall(he[1, :] .> 0)
         h = ze .+ he .* ((re .+ 1) ./ re)'
@@ -194,7 +194,7 @@ function assimilateHG(H, W, x, wbf, hbf, Qₚ, nₚ, rₚ, zₚ, nens, ri, ϵₒ
         i = findall(he[1, :] .> 0)
         if length(i) < min_ensemble_size
             Sf = [S[j, t] > 0 ? S[j, t] : minimum(S[:, t][S[:, t] .> 0]) for j=1:length(x)]
-            he = [(Qe[e] .* ne[e]) ./ (W[j, t] .* Sf.^0.5).^(3/5) for j=1:length(x), e=1:nens]
+            he = [(Qe[e] .* ne[e]) ./ (W[j, t] .* Sf[j].^0.5).^(3/5) for j=1:length(x), e=1:nens]
         end
         i = findall(he[1, :] .> 0)
         h = ze .+ he .* ((re .+ 1) ./ re)'
